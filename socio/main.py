@@ -69,21 +69,29 @@ class BuddySystemVisualizer(QMainWindow):
         config_group = QGroupBox("Configuración del Sistema")
         config_layout = QFormLayout(config_group)
         
-        # Entrada para tamaño máximo de memoria
-        self.max_size_input = QSpinBox()
-        self.max_size_input.setRange(64, 4096)
-        self.max_size_input.setValue(1024)
-        self.max_size_input.setSingleStep(64)
-        self.max_size_input.setSuffix(" KB")
-        config_layout.addRow("Tamaño máximo:", self.max_size_input)
-        
-        # Entrada para tamaño mínimo de bloque
-        self.min_size_input = QSpinBox()
-        self.min_size_input.setRange(8, 256)
-        self.min_size_input.setValue(64)
-        self.min_size_input.setSingleStep(16)
-        self.min_size_input.setSuffix(" KB")
-        config_layout.addRow("Tamaño mínimo:", self.min_size_input)
+        # Entrada para tamaño máximo de memoria (potencias de 2)
+        max_size_layout = QHBoxLayout()
+        max_size_layout.addWidget(QLabel("Tamaño máximo:"))
+        self.max_size_combo = QComboBox()
+        # Agregar opciones de potencias de 2
+        sizes = [64, 128, 256, 512, 1024, 2048, 4096, 8192]
+        for size in sizes:
+            self.max_size_combo.addItem(f"{size} KB", size)
+        self.max_size_combo.setCurrentIndex(4)  # 1024 KB por defecto
+        max_size_layout.addWidget(self.max_size_combo)
+        config_layout.addRow(max_size_layout)
+
+        # Entrada para tamaño mínimo de bloque (potencias de 2)
+        min_size_layout = QHBoxLayout()
+        min_size_layout.addWidget(QLabel("Tamaño mínimo:"))
+        self.min_size_combo = QComboBox()
+        # Agregar opciones de potencias de 2 (más pequeñas)
+        min_sizes = [8, 16, 32, 64, 128, 256]
+        for size in min_sizes:
+            self.min_size_combo.addItem(f"{size} KB", size)
+        self.min_size_combo.setCurrentIndex(3)  # 64 KB por defecto
+        min_size_layout.addWidget(self.min_size_combo)
+        config_layout.addRow(min_size_layout)
         
         # Botón para inicializar el sistema
         self.init_btn = QPushButton("Inicializar Sistema")
@@ -209,9 +217,9 @@ class BuddySystemVisualizer(QMainWindow):
         self.initialize_system()
     
     def initialize_system(self):
-        max_size = self.max_size_input.value()
-        min_size = self.min_size_input.value()
-        
+        max_size = self.max_size_combo.currentData()
+        min_size = self.min_size_combo.currentData()    
+
         if min_size >= max_size:
             QMessageBox.warning(self, "Error", "El tamaño mínimo debe ser menor que el tamaño máximo")
             return
@@ -357,6 +365,30 @@ class BuddySystemVisualizer(QMainWindow):
         if not node.is_split:
             return 1
         return 1 + max(self.calculate_tree_depth(node.left), self.calculate_tree_depth(node.right))
+    
+    def calculate_tree_layout(self, node, level=0, pos=0, max_depth=0):
+        """
+        Calcula las posiciones de todos los nodos usando un algoritmo de layout
+        que evita solapamientos
+        """
+        if node is None:
+            return pos
+        
+        # Almacenar información de layout para este nodo
+        node._x = pos
+        node._y = level * 120  # Espaciado vertical fijo
+        
+        if node.is_split and node.left and node.right:
+            # Calcular posiciones para hijos
+            left_pos = self.calculate_tree_layout(node.left, level + 1, pos, max_depth)
+            right_pos = self.calculate_tree_layout(node.right, level + 1, left_pos + 1, max_depth)
+            
+            # Centrar el nodo padre sobre sus hijos
+            node._x = (node.left._x + node.right._x) / 2
+            return max(left_pos, right_pos)
+        else:
+            # Nodo hoja
+            return pos + 1
     
     def draw_tree(self, node, x, y, horizontal_spacing, level, max_depth):
         if node is None:
