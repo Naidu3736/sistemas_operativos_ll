@@ -156,7 +156,7 @@ class BuddySystemVisualizer(QMainWindow):
         processes_layout.addWidget(self.process_combo)
         
         # Botón para liberar proceso seleccionado
-        self.release_selected_btn = QPushButton("Liberar Proceso Seleccionado")
+        self.release_selected_btn = QPushButton("Liberar Proceso")
         self.release_selected_btn.clicked.connect(self.release_selected_memory)
         self.release_selected_btn.setEnabled(False)
         processes_layout.addWidget(self.release_selected_btn)
