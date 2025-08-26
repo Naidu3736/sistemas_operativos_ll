@@ -1,4 +1,6 @@
 import sys
+from collections import deque
+from typing import Optional, Iterator
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QLineEdit, QGraphicsView, QGraphicsScene,
                              QGraphicsRectItem, QGraphicsTextItem, QTreeWidget, QTreeWidgetItem,
@@ -6,40 +8,63 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
                              QComboBox, QMenu, QSizePolicy, QFormLayout, QSpinBox)
 from PyQt6.QtCore import Qt, QRectF, QPointF
 from PyQt6.QtGui import QBrush, QColor, QPen, QFont, QPainter, QAction, QTransform
+from utils.process import Process
+from utils.buddy_system import BuddySystem
 
-# Importar tu implementación del Buddy System
-from utils.buddy_system import BuddySystem, Node
+process = {}
 
 class MemoryBlockItem(QGraphicsRectItem):
-    def __init__(self, x, y, width, height, text, status, size):
+    def __init__(self, x, y, width, height, text, status, size, pid, process_size):
         super().__init__(x, y, width, height)
         
         # Configurar colores según el estado
         if status == "allocated":
             brush = QBrush(QColor(255, 100, 100))  # Rojo
             text_color = QColor(255, 255, 255)     # Blanco
+            border_color = QColor(180, 0, 0)       # Borde rojo oscuro
         elif status == "split":
             brush = QBrush(QColor(100, 100, 255))  # Azul
             text_color = QColor(255, 255, 255)     # Blanco
+            border_color = QColor(0, 0, 180)       # Borde azul oscuro
         else:
             brush = QBrush(QColor(100, 255, 100))  # Verde
             text_color = QColor(0, 0, 0)           # Negro
+            border_color = QColor(0, 180, 0)       # Borde verde oscuro
             
         self.setBrush(brush)
-        self.setPen(QPen(QColor(0, 0, 0), 1))
-        
-        # Añadir texto centrado
-        self.text_item = QGraphicsTextItem(text)
-        self.text_item.setDefaultTextColor(text_color)
+        self.setPen(QPen(border_color, 2))
         
         # Ajustar tamaño de fuente según el tamaño del bloque
-        font_size = 10 if size >= 128 else 8
-        self.text_item.setFont(QFont("Arial", font_size, QFont.Weight.Bold))
+        font_size = 8 if size >= 128 else 7
         
+        # Crear texto principal
+        self.text_item = QGraphicsTextItem(text)
+        self.text_item.setDefaultTextColor(text_color)
+        font = QFont("Arial", font_size, QFont.Weight.Bold)
+        self.text_item.setFont(font)
+        
+        # Centrar texto principal
         text_rect = self.text_item.boundingRect()
         text_x = x + (width - text_rect.width()) / 2
-        text_y = y + (height - text_rect.height()) / 2
+        text_y = y + 5  # Pequeño margen superior
         self.text_item.setPos(text_x, text_y)
+        
+        # Si es un bloque asignado, mostrar información del proceso
+        if status == "allocated":
+            # Crear texto adicional para mostrar información del proceso
+            process_text = f"PID: {pid}\n{process_size} kB / {size - process_size} KB"
+            self.process_text_item = QGraphicsTextItem(process_text)
+            self.process_text_item.setDefaultTextColor(text_color)
+            
+            # Usar fuente un poco más pequeña
+            process_font = QFont("Arial", font_size - 1, QFont.Weight.Bold)
+            self.process_text_item.setFont(process_font)
+            
+            process_text_rect = self.process_text_item.boundingRect()
+            process_text_x = x + (width - process_text_rect.width()) / 2
+            process_text_y = y + height - process_text_rect.height() - 5  # Colocar en la parte inferior
+            
+            self.process_text_item.setPos(process_text_x, process_text_y)
 
 class BuddySystemVisualizer(QMainWindow):
     def __init__(self):
@@ -49,20 +74,20 @@ class BuddySystemVisualizer(QMainWindow):
         self.initUI()
         
     def initUI(self):
-        self.setWindowTitle("Buddy System Memory Management - Tree Visualizer")
-        self.setGeometry(50, 50, 1600, 900)
+        self.setWindowTitle("Buddy System Memory Management - Professional Visualizer")
+        self.setGeometry(50, 50, 1800, 1000)
         
         # Widget central
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
         
-        # Splitter con proporción 25%-75%
+        # Splitter con proporción 30%-70%
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Panel izquierdo: Controles (25%)
+        # Panel izquierdo: Controles (30%)
         left_panel = QWidget()
-        left_panel.setMaximumWidth(400)
+        left_panel.setMaximumWidth(500)
         left_layout = QVBoxLayout(left_panel)
         
         # Grupo de configuración del sistema
@@ -73,8 +98,7 @@ class BuddySystemVisualizer(QMainWindow):
         max_size_layout = QHBoxLayout()
         max_size_layout.addWidget(QLabel("Tamaño máximo:"))
         self.max_size_combo = QComboBox()
-        # Agregar opciones de potencias de 2
-        sizes = [64, 128, 256, 512, 1024, 2048, 4096, 8192]
+        sizes = [64, 128, 256, 512, 1024, 2048, 4096]
         for size in sizes:
             self.max_size_combo.addItem(f"{size} KB", size)
         self.max_size_combo.setCurrentIndex(4)  # 1024 KB por defecto
@@ -85,7 +109,6 @@ class BuddySystemVisualizer(QMainWindow):
         min_size_layout = QHBoxLayout()
         min_size_layout.addWidget(QLabel("Tamaño mínimo:"))
         self.min_size_combo = QComboBox()
-        # Agregar opciones de potencias de 2 (más pequeñas)
         min_sizes = [8, 16, 32, 64, 128, 256]
         for size in min_sizes:
             self.min_size_combo.addItem(f"{size} KB", size)
@@ -135,8 +158,20 @@ class BuddySystemVisualizer(QMainWindow):
         used_layout = QHBoxLayout()
         used_layout.addWidget(QLabel("Memoria Usada:"))
         self.memory_used_bar = QProgressBar()
-        self.memory_used_bar.setFormat("%v bytes (%p%)")
-        self.memory_used_bar.setStyleSheet("QProgressBar::chunk { background-color: #ff6464; }")
+        self.memory_used_bar.setFormat("%v KB (%p%)")
+        self.memory_used_bar.setStyleSheet("""
+            QProgressBar {
+                border: 2px solid #cc0000;
+                border-radius: 5px;
+                text-align: center;
+                background: #ffcccc;
+                color: black;
+            }
+            QProgressBar::chunk {
+                background-color: #ff6464;
+                width: 10px;
+            }
+        """)
         used_layout.addWidget(self.memory_used_bar)
         memory_info_layout.addLayout(used_layout)
         
@@ -144,8 +179,20 @@ class BuddySystemVisualizer(QMainWindow):
         free_layout = QHBoxLayout()
         free_layout.addWidget(QLabel("Memoria Libre:"))
         self.memory_free_bar = QProgressBar()
-        self.memory_free_bar.setFormat("%v bytes (%p%)")
-        self.memory_free_bar.setStyleSheet("QProgressBar::chunk { background-color: #5F7689; }")
+        self.memory_free_bar.setFormat("%v KB (%p%)")
+        self.memory_free_bar.setStyleSheet("""
+            QProgressBar {
+                border: 2px solid #006600;
+                border-radius: 5px;
+                text-align: center;
+                background: #ccffcc;
+                color: black;
+            }
+            QProgressBar::chunk {
+                background-color: #64ff64;
+                width: 10px;
+            }
+        """)
         free_layout.addWidget(self.memory_free_bar)
         memory_info_layout.addLayout(free_layout)
         
@@ -164,7 +211,7 @@ class BuddySystemVisualizer(QMainWindow):
         processes_layout.addWidget(self.process_combo)
         
         # Botón para liberar proceso seleccionado
-        self.release_selected_btn = QPushButton("Liberar Proceso")
+        self.release_selected_btn = QPushButton("Liberar Proceso Seleccionado")
         self.release_selected_btn.clicked.connect(self.release_selected_memory)
         self.release_selected_btn.setEnabled(False)
         processes_layout.addWidget(self.release_selected_btn)
@@ -172,16 +219,17 @@ class BuddySystemVisualizer(QMainWindow):
         left_layout.addWidget(processes_group)
         left_layout.addStretch()
         
-        # Panel derecho: Visualización (75%)
+        # Panel derecho: Visualización (70%)
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         
-        visualization_group = QGroupBox("Visualización del Árbol Buddy System")
+        visualization_group = QGroupBox("Visualización Detallada del Árbol Buddy System")
         visualization_layout = QVBoxLayout(visualization_group)
         
         self.scene = QGraphicsScene()
         self.view = QGraphicsView(self.scene)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.view.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
@@ -197,7 +245,7 @@ class BuddySystemVisualizer(QMainWindow):
         # Añadir paneles al splitter
         splitter.addWidget(left_panel)
         splitter.addWidget(right_panel)
-        splitter.setSizes([400, 1200])
+        splitter.setSizes([500, 1300])
         
         main_layout.addWidget(splitter)
         
@@ -209,17 +257,20 @@ class BuddySystemVisualizer(QMainWindow):
         zoom_out_action.triggered.connect(self.zoom_out)
         reset_zoom_action = QAction("Reset Zoom", self)
         reset_zoom_action.triggered.connect(self.reset_zoom)
+        fit_view_action = QAction("Ajustar Vista", self)
+        fit_view_action.triggered.connect(self.fit_view)
         self.addAction(zoom_in_action)
         self.addAction(zoom_out_action)
         self.addAction(reset_zoom_action)
+        self.addAction(fit_view_action)
         
         # Inicializar con un sistema por defecto
         self.initialize_system()
     
     def initialize_system(self):
         max_size = self.max_size_combo.currentData()
-        min_size = self.min_size_combo.currentData()    
-
+        min_size = self.min_size_combo.currentData()
+        
         if min_size >= max_size:
             QMessageBox.warning(self, "Error", "El tamaño mínimo debe ser menor que el tamaño máximo")
             return
@@ -251,6 +302,9 @@ class BuddySystemVisualizer(QMainWindow):
     def reset_zoom(self):
         self.view.resetTransform()
     
+    def fit_view(self):
+        self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+    
     def allocate_memory(self):
         if not self.buddy_system:
             QMessageBox.warning(self, "Error", "Primero debe inicializar el sistema")
@@ -274,22 +328,6 @@ class BuddySystemVisualizer(QMainWindow):
         except ValueError:
             QMessageBox.warning(self, "Error", "Por favor ingrese valores numéricos válidos")
     
-    def release_memory(self):
-        if not self.buddy_system:
-            QMessageBox.warning(self, "Error", "Primero debe inicializar el sistema")
-            return
-            
-        try:
-            pid = int(self.pid_input.text())
-            success = self.buddy_system.release(pid)
-            if success:
-                self.update_interface()
-                self.pid_input.clear()
-            else:
-                QMessageBox.warning(self, "Error", "PID no encontrado")
-        except ValueError:
-            QMessageBox.warning(self, "Error", "Por favor ingrese un PID numérico válido")
-    
     def release_selected_memory(self):
         if not self.buddy_system:
             QMessageBox.warning(self, "Error", "Primero debe inicializar el sistema")
@@ -299,8 +337,11 @@ class BuddySystemVisualizer(QMainWindow):
             pid_text = self.process_combo.currentText().split(":")[0]
             try:
                 pid = int(pid_text)
-                self.pid_input.setText(str(pid))
-                self.release_memory()
+                success = self.buddy_system.release(pid)
+                if success:
+                    self.update_interface()
+                else:
+                    QMessageBox.warning(self, "Error", "PID no encontrado")
             except ValueError:
                 QMessageBox.warning(self, "Error", "Error al obtener el PID")
     
@@ -329,11 +370,11 @@ class BuddySystemVisualizer(QMainWindow):
         self.process_combo.clear()
         self.process_combo.addItem("Seleccione un proceso")
         
-        # Recorrer todos los nodos para encontrar los asignados
+        # Recorrer todos los nodos para encontrar los asignados usando el iterador BFS
         allocated_processes = []
         for node in self.buddy_system:
-            if node.is_allocated and node.pid != -1:
-                allocated_processes.append((node.pid, node.size))
+            if node.is_allocated:
+                allocated_processes.append((node.pid, node.process_size))
         
         # Ordenar procesos por PID y añadir al combo box
         allocated_processes.sort()
@@ -344,103 +385,119 @@ class BuddySystemVisualizer(QMainWindow):
         self.scene.clear()
         self.node_positions.clear()
         
-        # Calcular dimensiones para la visualización
-        tree_depth = self.calculate_tree_depth(self.buddy_system.root)
+        # Usar visualización profesional
+        self.draw_professional_tree()
         
-        # Calcular el ancho total necesario basado en la profundidad
-        # Cada nivel duplica la cantidad de nodos, así que necesitamos más espacio
-        total_width = 100 * (2 ** tree_depth)  # Espacio exponencial para niveles profundos
-        initial_width = min(total_width, 2000)  # Limitar el ancho máximo
-        
-        # Dibujar el árbol con mejor espaciado
-        self.draw_tree(self.buddy_system.root, initial_width/2, 50, initial_width/2, 0, tree_depth)
-        
-        # Ajustar la vista para que se vea todo el árbol
-        self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        # Ajustar la vista
+        self.fit_view()
     
-    def calculate_tree_depth(self, node):
-        """Calcula la profundidad máxima del árbol"""
-        if node is None:
-            return 0
-        if not node.is_split:
-            return 1
-        return 1 + max(self.calculate_tree_depth(node.left), self.calculate_tree_depth(node.right))
-    
-    def calculate_tree_layout(self, node, level=0, pos=0, max_depth=0):
-        """
-        Calcula las posiciones de todos los nodos usando un algoritmo de layout
-        que evita solapamientos
-        """
-        if node is None:
-            return pos
-        
-        # Almacenar información de layout para este nodo
-        node._x = pos
-        node._y = level * 120  # Espaciado vertical fijo
-        
-        if node.is_split and node.left and node.right:
-            # Calcular posiciones para hijos
-            left_pos = self.calculate_tree_layout(node.left, level + 1, pos, max_depth)
-            right_pos = self.calculate_tree_layout(node.right, level + 1, left_pos + 1, max_depth)
-            
-            # Centrar el nodo padre sobre sus hijos
-            node._x = (node.left._x + node.right._x) / 2
-            return max(left_pos, right_pos)
-        else:
-            # Nodo hoja
-            return pos + 1
-    
-    def draw_tree(self, node, x, y, horizontal_spacing, level, max_depth):
-        if node is None:
+    def draw_professional_tree(self):
+        """Visualización profesional del árbol usando BFS"""
+        if not self.buddy_system or not self.buddy_system.root:
             return
         
-        # Ajustar dimensiones según la profundidad del árbol
-        base_width = 100
-        base_height = 40
-        width = max(base_width - (level * 5), 60)  # Reducir tamaño en niveles profundos
-        height = max(base_height - (level * 3), 25)
+        # Organizar nodos por niveles
+        levels = {}
+        queue = deque([(self.buddy_system.root, 0)])
         
-        # Ajustar espaciado vertical
-        vertical_spacing = 80
+        while queue:
+            node, level = queue.popleft()
+            
+            if level not in levels:
+                levels[level] = []
+            levels[level].append(node)
+            
+            if node.left:
+                queue.append((node.left, level + 1))
+            if node.right:
+                queue.append((node.right, level + 1))
+        
+        # Calcular posiciones
+        max_level = max(levels.keys()) if levels else 0
+        base_x = 600  # Posición central inicial
+        
+        for level, nodes in levels.items():
+            y = 50 + level * 120  # Espaciado vertical
+            
+            # Calcular espaciado horizontal para este nivel
+            if level == 0:
+                # Raíz en el centro
+                x_positions = [base_x]
+            else:
+                # Distribuir nodos equitativamente
+                level_width = min(len(nodes) * 200, 1200)
+                start_x = base_x - level_width / 2
+                x_positions = [start_x + i * (level_width / max(len(nodes), 1)) for i in range(len(nodes))]
+            
+            for i, node in enumerate(nodes):
+                x = x_positions[i] if i < len(x_positions) else base_x
+                self.draw_node_with_style(node, x, y, level)
+        
+        # Dibujar conexiones
+        for level, nodes in levels.items():
+            for node in nodes:
+                if node.left and node.left in self.node_positions and node in self.node_positions:
+                    self.draw_connection(node, node.left, "L")
+                if node.right and node.right in self.node_positions and node in self.node_positions:
+                    self.draw_connection(node, node.right, "R")
+    
+    def draw_node_with_style(self, node, x, y, level):
+        """Dibuja un nodo con estilo profesional"""
+        # Tamaño basado en el nivel
+        width = max(120 - level * 8, 80)  # Aumentado el ancho mínimo
+        height = 60 if node.is_allocated else 50  # Más alto si está asignado para mostrar info adicional
         
         # Determinar estado y texto
         if node.is_allocated:
             status = "allocated"
-            text = f"PID {node.pid}\n{node.size}B"
+            text = f"Size: {node.size}KB"
         elif node.is_split:
             status = "split"
-            text = f"DIV\n{node.size}B"
+            text = f"SPLIT\nSize: {node.size}KB"
         else:
             status = "free"
-            text = f"LIBRE\n{node.size}B"
+            text = f"FREE\nSize: {node.size}KB"
         
-        # Dibujar rectángulo
-        rect = MemoryBlockItem(x - width/2, y, width, height, text, status, node.size)
+        # Dibujar nodo con sombra y estilo
+        rect = MemoryBlockItem(x - width/2, y, width, height, text, status, node.size, node.pid, node.process_size)
         self.scene.addItem(rect)
         self.scene.addItem(rect.text_item)
         
-        # Guardar posición para las conexiones
-        self.node_positions[node] = (x, y + height/2)
+        # Si es un bloque asignado, añadir el texto del proceso
+        if hasattr(rect, 'process_text_item'):
+            self.scene.addItem(rect.process_text_item)
         
-        # Dibujar hijos si existen
-        if node.left and node.right:
-            # Calcular nuevas posiciones
-            new_y = y + vertical_spacing
-            
-            # Mantener un espaciado mínimo entre nodos hijos
-            min_spacing = 80  # Espaciado mínimo entre nodos hijos
-            new_horizontal_spacing = max(horizontal_spacing * 0.5, min_spacing)
-            
-            left_x = x - new_horizontal_spacing
-            right_x = x + new_horizontal_spacing
-            
-            # Dibujar líneas conectivas con ángulo
-            self.scene.addLine(x, y + height, left_x, new_y, QPen(Qt.GlobalColor.gray, 1.5))
-            self.scene.addLine(x, y + height, right_x, new_y, QPen(Qt.GlobalColor.gray, 1.5))
-            
-            # Dibujar hijos recursivamente
-            self.draw_tree(node.left, left_x, new_y, new_horizontal_spacing, level + 1, max_depth)
-            self.draw_tree(node.right, right_x, new_y, new_horizontal_spacing, level + 1, max_depth)
+        # Guardar posición
+        self.node_positions[node] = (x, y + height/2)
+    
+    def draw_connection(self, parent, child, label_text):
+        """Dibuja una conexión con estilo profesional"""
+        if parent not in self.node_positions or child not in self.node_positions:
+            return
+        
+        parent_x, parent_y = self.node_positions[parent]
+        child_x, child_y = self.node_positions[child]
+        
+        # Dibujar línea
+        line = self.scene.addLine(parent_x, parent_y + 25, child_x, child_y - 25, 
+                                QPen(QColor(100, 100, 100), 2, Qt.PenStyle.DashLine))
+        
+        # Agregar etiqueta
+        mid_x = (parent_x + child_x) / 2
+        mid_y = (parent_y + child_y) / 2
+        
+        label = QGraphicsTextItem(label_text)
+        label.setPos(mid_x - 5, mid_y - 10)
+        label.setFont(QFont("Arial", 8, QFont.Weight.Bold))
+        label.setDefaultTextColor(QColor(70, 70, 70))
+        
+        # Fondo para la etiqueta
+        label_bg = QGraphicsRectItem(mid_x - 12, mid_y - 15, 24, 20)
+        label_bg.setBrush(QBrush(QColor(255, 255, 255, 200)))
+        label_bg.setPen(QPen(Qt.GlobalColor.transparent))
+        
+        self.scene.addItem(label_bg)
+        self.scene.addItem(label)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

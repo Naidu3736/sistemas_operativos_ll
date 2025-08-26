@@ -12,8 +12,10 @@
 *
 """
 
+from collections import deque
 from typing import Optional, Iterator
-from strategy.system import MemoryAllocationStrategy
+from utils.memory_allocate_abstract import MemoryAllocationAbstract
+from utils.process import Process
 
 class Node:
     def __init__(self, size, parent=None, is_allocated=False, pid=-1):
@@ -31,6 +33,7 @@ class Node:
         # PID = -1 (Sin proceso asignado)
         # PID >= 1 (Con proceso asignado)
         self.pid = pid
+        self.process_size = 0
         self.size = size  # Tamaño del bloque de memoria
         self.is_allocated = is_allocated  # Estado de asignación
         self.parent = parent  # Referencia al nodo padre
@@ -40,28 +43,28 @@ class Node:
 
 class BuddySystemIterator:
     def __init__(self, root: Optional[Node]):
-        self.stack = []
+        self.queue = deque()
         if root:
-            self.stack.append(root)
+            self.queue.append(root)
     
     def __iter__(self) -> Iterator[Node]:
         return self
     
     def __next__(self) -> Node:
-        if not self.stack:
+        if not self.queue:
             raise StopIteration
         
-        current = self.stack.pop()
+        current = self.queue.popleft()
         
-        # Agregar hijos en orden inverso para procesar en pre-order
-        if current.right:
-            self.stack.append(current.right)
+        # Agregar hijos en orden normal (primero izquierdo, luego derecho)
         if current.left:
-            self.stack.append(current.left)
+            self.queue.append(current.left)
+        if current.right:
+            self.queue.append(current.right)
         
         return current
 
-class BuddySystem(MemoryAllocationStrategy):
+class BuddySystem(MemoryAllocationAbstract):
     def __init__(self, MAX_SIZE=1024, MIN_SIZE=4):
         """
         Inicializa el sistema Buddy
@@ -70,8 +73,7 @@ class BuddySystem(MemoryAllocationStrategy):
             MAX_SIZE (int, optional): Tamaño máximo de memoria. Defaults to 1024.
             MIN_SIZE (int, optional): Tamaño mínimo de bloque. Defaults to 8.
         """
-        self.MAX_SIZE = MAX_SIZE  # Tamaño total de memoria disponible
-        self.MIN_SIZE = MIN_SIZE  # Tamaño mínimo de bloque asignable
+        super().__init__(MAX_SIZE, MIN_SIZE)
         self.root = Node(MAX_SIZE)  # Nodo raíz que representa toda la memoria
 
     def __iter__(self):
@@ -143,6 +145,7 @@ class BuddySystem(MemoryAllocationStrategy):
         elif node.size >= size:
             node.is_allocated = True
             node.pid = pid
+            node.process_size = size
             return True  # Asignación exitosa
         
         return False  # No se pudo asignar
@@ -184,6 +187,7 @@ class BuddySystem(MemoryAllocationStrategy):
             # Encontró el proceso, libera el nodo
             node.is_allocated = False
             node.pid = -1
+            node.process_size = 0
             self.__merge_buddies(node.parent)  # Intenta combinar buddies libres
             return True  # Liberación exitosa
         elif node.is_split:
@@ -211,7 +215,7 @@ class BuddySystem(MemoryAllocationStrategy):
             not parent.right.is_allocated and
             not parent.right.is_split):
 
-            # Ambos buddies están libres → podemos mergear
+            # Ambos buddies están libres → podemos fusionarlos
             parent.is_split = False
             parent.left = None
             parent.right = None
@@ -262,7 +266,7 @@ class BuddySystem(MemoryAllocationStrategy):
         # Primero procesamos los hijos recursivamente
         if node.is_allocated:
             # Nodo asignado a un proceso → contribuye con todo su tamaño
-            return node.size
+            return node.process_size
         elif node.is_split:
             # Nodo dividido → la memoria usada es la suma de sus hijos
             return (self.__calculate_used_memory(node.left) + 
