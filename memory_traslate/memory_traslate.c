@@ -37,6 +37,9 @@
  * @var page_size - Tamaño de página en bytes
  * @var num_pages - Número de páginas virtuales
  * @var num_frames - Número de marcos físicos
+ * @var page_size_bits - Número de bits para representar el tamaño de página
+ * @var num_pages_bits - Número de bits para representar el número de páginas
+ * @var num_frames_bits - Número de bits para representar el número de marcos
  * @var offset_mask - Máscara para extraer offset
  * @var frame_number_mask - Máscara para extraer número de marco
  * @var page_table - Tabla que mapea páginas → marcos
@@ -201,3 +204,4 @@ uint32_t virtual_to_physical(AddressTranslator* translator, uint32_t virtual_add
     uint32_t offset_bits = translator->page_size_bits;
     return (frame_number << offset_bits) | offset;
 }
+
