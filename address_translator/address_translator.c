@@ -201,6 +201,6 @@ uint32_t virtual_to_physical(AddressTranslator* translator, uint32_t virtual_add
     uint32_t frame_number = translator->page_table[page_number] & translator->frame_number_mask;
     
     // Construir dirección física: marco + offset
-    uint32_t offset_bits = translator->page_size_bits;
-    return (frame_number << offset_bits) | offset;
+    return (frame_number << translator->page_size_bits) | offset;
+
 }
