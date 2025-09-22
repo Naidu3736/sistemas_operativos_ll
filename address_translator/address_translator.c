@@ -141,6 +141,7 @@ AddressTranslator* init(uint32_t physical_memory_size, uint32_t virtual_memory_s
  * @param translator Puntero al traductor a destruir
  */
 void destroy(AddressTranslator* translator) {
+    // Verifica que el traductor esté inicializado, en otro caso no hace nada
     if (translator) {
         if (translator->page_table) {
             free(translator->page_table);
@@ -156,7 +157,13 @@ void destroy(AddressTranslator* translator) {
  * @param entry Entrada de tabla (marco físico + flags)
  */
 void set_page_table(AddressTranslator* translator, uint32_t page, uint32_t entry) {
-    if (!translator || !translator->page_table || page < 0 || entry < 0) return;
+    // Verifica que el traductor y la tabla de páginas esten correctamente inicializados
+    if (!translator || !translator->page_table) return;
+
+    // Verfica que el número de páginas esté dentro de los límites del arreglo
+    if (page >= translator->num_pages) return;
+
+    // Asigna la entrada en la página
     translator->page_table[page] = entry;
 }
 
@@ -204,3 +211,4 @@ uint32_t virtual_to_physical(AddressTranslator* translator, uint32_t virtual_add
     return (frame_number << translator->page_size_bits) | offset;
 
 }
+
