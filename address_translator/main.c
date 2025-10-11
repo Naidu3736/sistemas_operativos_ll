@@ -39,7 +39,7 @@ void showTable() {
     for (uint32_t i = 0; i < translator->num_pages; i++) {
         uint32_t entry = translator->page_table[i];
         printf("  %3u  |     %3X      |    ", i, entry);
-        print_binary(entry, 5 + translator->num_frames_bits);
+        print_binary(entry, 5 + translator->num_frames_bits, NULL);
         printf("\n");
     }
 }
@@ -87,7 +87,7 @@ void translateAddress() {
 
     printf("Direccion fisica (16): %X\n", physical_address);
     printf("Direccion fisica (2): ");
-    print_binary(physical_address, translator->num_frames_bits + translator->page_size_bits);
+    print_binary(physical_address, translator->num_frames_bits + translator->page_size_bits, NULL);
     printf("\n");
 }
 
@@ -128,7 +128,7 @@ void loadFromFile(const char* filename) {
             } else {
                 printf("\nVA = %X -> PA (16): %X\n", virtual_address, physical_address);
                 printf("PA (2): ");
-                print_binary(physical_address, translator->num_frames_bits + translator->page_size_bits);
+                print_binary(physical_address, translator->num_frames_bits + translator->page_size_bits, NULL);
                 printf("\n");
             }
         } 
@@ -140,7 +140,7 @@ void loadFromFile(const char* filename) {
             for (uint32_t i = 0; i < translator->num_pages; i++) {
                 uint32_t entry = translator->page_table[i];
                 printf("  %3X  |     %3X      |    ", i, entry);
-                print_binary(entry, 5 + translator->num_frames_bits);
+                print_binary(entry, 5 + translator->num_frames_bits, NULL);
                 printf("\n");
             }
         }
