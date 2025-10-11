@@ -43,6 +43,12 @@
  * @var offset_mask - Máscara para extraer offset
  * @var frame_number_mask - Máscara para extraer número de marco
  * @var page_table - Tabla que mapea páginas → marcos
+ * 
+ * Nuevos campos para manejo de reemplazo de páginas:
+ * @var use_bit - Bit de uso para cada marco (algoritmo de reemplazo)
+ * @var frame_to_page - Mapeo inverso de marco a página (algoritmo de reemplazo)
+ * @var clock_pointer - Puntero del reloj para algoritmo de reemplazo
+ * @var occupied_frames - Número de marcos actualmente ocupados
  */
 typedef struct {
     uint32_t page_size;
@@ -54,6 +60,11 @@ typedef struct {
     uint32_t offset_mask;
     uint32_t frame_number_mask;
     uint32_t* page_table;
+
+    uint8_t* use_bit;        
+    int* frame_to_page;      
+    uint32_t clock_pointer;  
+    uint32_t occupied_frames;
 } AddressTranslator;
 
 /**
@@ -168,6 +179,55 @@ void set_page_table(AddressTranslator* translator, uint32_t page, uint32_t entry
 }
 
 /**
+ * @brief Maneja fallo de página usando algoritmo de reemplazo Clock
+ * @brief translator Puntero al traductor
+ * @brief page_number Número de página que causó el fallo
+ * @note Asume que la página no está presente en la tabla
+ * @note Actualiza la tabla de páginas y estructuras internas
+ * @note Si hay marcos libres, los usa antes de reemplazar
+ * @note Usa el bit de uso para decidir qué página reemplazar
+ * @note Marca la nueva página como presente y con bit de uso activo
+ * @note Si reemplaza, marca la página antigua como ausente
+ * @note Usa máscaras para manipular bits en las entradas
+ */
+void handle_page_fault(AddressTranslator* translator, uint32_t page_number) {
+    const uint32_t present_bit_mask = 0x80;
+    const uint32_t frame_number_mask = 0x7F;
+
+    // Si hay marcos libres
+    if (translator->occupied_frames < translator->num_frames) {
+        for (uint32_t i = 0; i < translator->num_frames; i++) {
+            if (translator->frame_to_page[i] == -1) {
+                translator->page_table[page_number] = (i & frame_number_mask) | present_bit_mask;
+                translator->frame_to_page[i] = page_number;
+                translator->use_bit[i] = 1;
+                translator->occupied_frames++;
+                return;
+            }
+        }
+    }
+
+    // Clock replacement
+    while (1) {
+        uint32_t current_frame = translator->clock_pointer;
+        if (translator->use_bit[current_frame] == 0) {
+            int old_page = translator->frame_to_page[current_frame];
+            if (old_page != -1) translator->page_table[old_page] &= ~present_bit_mask;
+
+            translator->page_table[page_number] = (current_frame & frame_number_mask) | present_bit_mask;
+            translator->frame_to_page[current_frame] = page_number;
+            translator->use_bit[current_frame] = 1;
+
+            translator->clock_pointer = (translator->clock_pointer + 1) % translator->num_frames;
+            return;
+        } else {
+            translator->use_bit[current_frame] = 0;
+            translator->clock_pointer = (translator->clock_pointer + 1) % translator->num_frames;
+        }
+    }
+}
+
+/**
  * @brief Traduce dirección virtual a física
  * @param translator Puntero al traductor
  * @param virtual_address Dirección virtual a traducir
@@ -207,6 +267,9 @@ uint32_t virtual_to_physical(AddressTranslator* translator, uint32_t virtual_add
     // Extraer número de marco físico
     uint32_t frame_number = translator->page_table[page_number] & translator->frame_number_mask;
     
+    // Actualizar bit de uso (algoritmo de reemplazo)    
+    translator->use_bit[frame_number] = 1;
+
     // Construir dirección física: marco + offset
     return (frame_number << translator->page_size_bits) | offset;
 
