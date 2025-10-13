@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "address_translator.c"
+#include "menu_ad.c"
+
 
 AddressTranslator* translator;
 
@@ -39,11 +41,10 @@ void showTable() {
     for (uint32_t i = 0; i < translator->num_pages; i++) {
         uint32_t entry = translator->page_table[i];
         printf("  %3u  |     %3X      |    ", i, entry);
-        print_binary(entry, 5 + translator->num_frames_bits);
+        print_binary(entry, 5 + translator->num_frames_bits, NULL);
         printf("\n");
     }
 }
-
 void enterPageContent() {
     if (!translator) {
         printf("Traductor no inicializado.\n");
@@ -53,7 +54,14 @@ void enterPageContent() {
     uint32_t page, entry;
     
     printf("Ingrese numero de pagina (0-%u): ", translator->num_pages - 1);
-    scanf("%u", &page);
+    
+    // 1. VERIFICAR que se leyó un número correctamente
+    if (scanf("%u", &page) != 1) {
+        printf("\nError: Entrada invalida. Debe ingresar un numero.\n");
+        // 2. LIMPIAR el búfer de entrada para evitar un bucle infinito
+        while (getchar() != '\n'); 
+        return;
+    }
     
     if (page >= translator->num_pages) {
         printf("Pagina fuera de rango.\n");
@@ -61,12 +69,16 @@ void enterPageContent() {
     }
 
     printf("Ingrese el contenido de la pagina %u: ", page);
-    scanf("%u", &entry);
-    
+
+    // 3. REPETIR la misma verificación para la segunda entrada
+    if (scanf("%u", &entry) != 1) {
+        printf("\nError: Entrada invalida. Debe ingresar un numero.\n");
+        while (getchar() != '\n');
+        return;
+    }
     set_page_table(translator, page, entry);
     printf("Entrada de tabla actualizada.\n");
 }
-
 void translateAddress() {
     if (!translator) {
         printf("Traductor no inicializado.\n");
@@ -87,7 +99,7 @@ void translateAddress() {
 
     printf("Direccion fisica (16): %X\n", physical_address);
     printf("Direccion fisica (2): ");
-    print_binary(physical_address, translator->num_frames_bits + translator->page_size_bits);
+    print_binary(physical_address, translator->num_frames_bits + translator->page_size_bits, NULL);
     printf("\n");
 }
 
@@ -128,7 +140,7 @@ void loadFromFile(const char* filename) {
             } else {
                 printf("\nVA = %X -> PA (16): %X\n", virtual_address, physical_address);
                 printf("PA (2): ");
-                print_binary(physical_address, translator->num_frames_bits + translator->page_size_bits);
+                print_binary(physical_address, translator->num_frames_bits + translator->page_size_bits, NULL);
                 printf("\n");
             }
         } 
@@ -140,7 +152,7 @@ void loadFromFile(const char* filename) {
             for (uint32_t i = 0; i < translator->num_pages; i++) {
                 uint32_t entry = translator->page_table[i];
                 printf("  %3X  |     %3X      |    ", i, entry);
-                print_binary(entry, 5 + translator->num_frames_bits);
+                print_binary(entry, 5 + translator->num_frames_bits, NULL);
                 printf("\n");
             }
         }
@@ -151,16 +163,23 @@ void loadFromFile(const char* filename) {
 
     fclose(file);
 }
+/*Limpia la pantalla*/
+void cleanscreen() {
+    #ifdef _WIN32
+        system("cls");
+    #else
+      system("clear");
+    #endif
+}
+
 
 int main() {
     int mode;
-    printf("Seleccione el modo:\n");
-    printf("1. Interactivo (teclado)\n");
-    printf("2. Archivo (.txt)\n");
-    printf("Opcion: ");
+    int anchoConsola = 80; // Valor por defecto
+    mostrarMenu(anchoConsola);
     scanf("%d", &mode);
-
     if (mode == 1) {
+        cleanscreen();
         uint32_t physical_memory_size, virtual_memory_size, page_size;
 
         printf("\nIngrese el tamaño de la memoria fisica: ");
@@ -184,6 +203,7 @@ int main() {
         int option;
         do {
             showMenu();
+
             scanf("%d", &option);
             
             switch(option) {
@@ -198,12 +218,17 @@ int main() {
         destroy(translator);
     } 
     else if (mode == 2) {
+        cleanscreen();
         char filename[100];
         printf("Ingrese el nombre del archivo con su extension (ejemplo, prueba.txt): ");
         scanf("%s", filename);
         loadFromFile(filename);
         destroy(translator);
     } 
+    else if (mode == 3) {
+        printf("Saliendo del programa...\n");
+        return 0;
+    }
     else {
         printf("Opcion invalida.\n");
     }

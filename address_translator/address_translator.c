@@ -266,7 +266,6 @@ uint32_t virtual_to_physical(AddressTranslator* translator, uint32_t virtual_add
 
     // Extraer número de marco físico
     uint32_t frame_number = translator->page_table[page_number] & translator->frame_number_mask;
-    
     // Actualizar bit de uso (algoritmo de reemplazo)    
     translator->use_bit[frame_number] = 1;
 
