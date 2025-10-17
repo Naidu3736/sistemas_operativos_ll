@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 @file    simulador_memoria.py
@@ -160,7 +158,7 @@ class AddressTranslator:
             else:
                 # --- SEGUNDA OPORTUNIDAD ---
                 ui.set_reaction("CHANCE")
-                ui.set_status(f"-> ⏳ Marco {self.clock_pointer} tiene bit de uso 1. Dando segunda oportunidad.")
+                ui.set_status(f"-> Marco {self.clock_pointer} tiene bit de uso 1. Dando segunda oportunidad.")
                 
                 # Actualiza el estado lógico
                 self.use_bit[self.clock_pointer] = 0
@@ -442,4 +440,5 @@ if __name__ == "__main__":
             break
         else:
             print("Opcion invalida, por favor intente de nuevo.")
+
             time.sleep(1)
