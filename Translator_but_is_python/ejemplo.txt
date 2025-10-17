@@ -1,0 +1,46 @@
+2048 4096 256
+# ---
+# PASO 1: Llenar la memoria.
+# Esto provocará 8 fallos de página, llenando los 8 marcos físicos
+# con las páginas 0, 1, 2, 3, 4, 5, 6 y 7.
+# ---
+TRANS 0x010
+TRANS 0x120
+TRANS 0x230
+TRANS 0x340
+TRANS 0x450
+TRANS 0x560
+TRANS 0x670
+TRANS 0x780
+# ---
+# PASO 2: Mostrar el estado de la memoria una vez que está llena.
+# En este punto, todos los marcos están ocupados y sus bits de uso son '1'.
+# ---
+SHOWTABLE
+# ---
+# PASO 3: Provocar "Hits" de página.
+# Accedemos a las páginas 2 y 5, que ya están en memoria.
+# Esto es para demostrar cómo se refresca su bit de uso a '1'.
+# ---
+TRANS 0x2FF
+TRANS 0x5AA
+# ---
+# PASO 4: Forzar un fallo de página para activar el ALGORITMO CLOCK.
+# Intentamos acceder a la página 10 (0xA en hexadecimal).
+# ---
+TRANS 0xA00
+# ---
+# PASO 5: Mostrar el resultado del reemplazo.
+# Podremos ver qué página fue seleccionada como víctima y reemplazada por la página 10.
+# ---
+SHOWTABLE
+# ---
+# PASO 6: Forzar otro fallo de página.
+# Intentamos acceder a la página 11 (0xB en hexadecimal).
+# El puntero del reloj continuará desde donde se quedó.
+# ---
+TRANS 0xB00
+# ---
+# PASO 7: Mostrar el estado final de la memoria.
+# ---
+SHOWTABLE
