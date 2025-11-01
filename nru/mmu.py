@@ -11,6 +11,7 @@ class MMU:
         self.num_pages = virtual_memory_size // page_size
         
         self.page_size_bits = self._calculate_bits(page_size)
+        self.num_pages_bits = self._calculate_bits(self.num_pages)
         self.num_frames_bits = self._calculate_bits(self.num_frames)
         
         self.offset_mask = (1 << self.page_size_bits) - 1
@@ -168,7 +169,7 @@ class MMU:
         if not self.page_table:
             return None
         
-        total_bits = self.page_size_bits + self._calculate_bits(self.num_pages)
+        total_bits = self.page_size_bits + self.num_pages_bits
         if virtual_address >= (1 << total_bits):
             return None
         
